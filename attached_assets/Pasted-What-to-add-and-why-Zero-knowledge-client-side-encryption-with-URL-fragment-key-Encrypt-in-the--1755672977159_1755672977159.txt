@@ -1,0 +1,38 @@
+What to add (and why)
+
+Zero-knowledge (client-side) encryption with URL fragment key
+Encrypt in the browser using WebCrypto (AES-GCM), upload only ciphertext, and put the decryption key in the URL hash fragment (after #). Browsers never send the fragment to servers, so the backend can’t read secrets—even if logs leak. This is the pattern used by Firefox Send-style tools and Bitwarden Send. 
+W3C
+Hacker News
+Bitwarden
+
+One-time retrieval that’s actually one-time
+Replit KV doesn’t give you an atomic “get-and-delete,” so your current “GET then DEL” can race. If you need a hard guarantee, put Redis in front and use GETDEL (atomic). If you must stay KV-only, mark a tombstone and short-circuit on second read (best-effort). 
+Redis
+
+Key management & rotation
+On the server side, if you keep any keys (e.g., HMAC signing keys), follow OWASP Key Management Cheat Sheet; and if you use Fernet anywhere, switch to MultiFernet for rotation. (Fernet = AES-128-CBC + HMAC-SHA256 with authenticated encryption.) 
+OWASP Cheat Sheet Series
+cryptography.io
+Stack Overflow
+
+Abuse & brute-force protection
+Add per-IP and global rate limits (SlowAPI or Redis token bucket) and do constant-time comparisons (HMAC or secrets.compare_digest) when checking any signed token to prevent timing leaks. Map this to OWASP API Top-10 items (resource consumption, auth). 
+slowapi.readthedocs.io
+GitHub
+Python documentation
+OWASP
+
+HTTP & browser hardening
+Set strict headers everywhere: HSTS, CSP (nonce/strict-dynamic), Referrer-Policy: no-referrer, Cache-Control: no-store, X-Content-Type-Options: nosniff, Permissions-Policy minimal, and enable TrustedHostMiddleware to block Host-header attacks. These stop referrer leaks (important since your link contains a fragment key in the URL), caching of secrets, and common XSS vectors. 
+MDN Web Docs
++2
+MDN Web Docs
++2
+OWASP Cheat Sheet Series
+starlette.io
+
+Concrete implementation plan (FastAPI + minimal JS)
+A) Frontend: true end-to-end encryption
+
+Use WebCrypto to encrypt before upload; append base64 key in the fragment:
