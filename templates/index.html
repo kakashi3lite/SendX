@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>One-View Secrets - Secure Secret Sharing</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/style.css">
+    
+    <!-- Security headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; require-trusted-types-for 'script'; trusted-types default">
+    <meta http-equiv="X-LLM-Protection" content="1; mode=block">
+    <meta http-equiv="LLM-Processing-Policy" content="no-processing">
+    <meta http-equiv="LLM-Context-Policy" content="no-external-context">
+    <meta http-equiv="X-AI-Instructions" content="none; no-process; no-training; no-indexing">
+</head>
+<body>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8 col-xl-6">
+                <div class="card shadow-lg border-0 mt-5">
+                    <div class="card-header bg-primary text-white text-center py-4">
+                        <h1 class="mb-0">
+                            <i class="bi bi-shield-lock"></i>
+                            One-View Secrets
+                        </h1>
+                        <p class="mb-0 mt-2">Zero-knowledge secret sharing</p>
+                    </div>
+                    
+                    <div class="card-body p-4">
+                        <!-- Info Alert -->
+                        <div class="alert alert-info" role="alert">
+                            <i class="bi bi-shield-check"></i>
+                            <strong>Zero-knowledge encryption:</strong> Your secret is encrypted in your browser before upload. 
+                            The key after "#" never reaches our servers - keep it secret!
+                            <button type="button" class="btn btn-link btn-sm p-0 ms-1" data-bs-toggle="tooltip" data-bs-placement="top" 
+                                    title="The decryption key lives only in the URL fragment (#...), which browsers don't send to servers">
+                                <i class="bi bi-info-circle-fill"></i>
+                            </button>
+                        </div>
+                        
+                        <!-- Create Secret Form -->
+                        <form id="createSecretForm">
+                            <div class="mb-4">
+                                <label for="secretText" class="form-label fw-bold">
+                                    <i class="bi bi-file-text"></i>
+                                    Secret Content
+                                </label>
+                                <textarea 
+                                    class="form-control" 
+                                    id="secretText" 
+                                    rows="6" 
+                                    placeholder="Enter your secret message, password, or sensitive information..."
+                                    maxlength="50000"
+                                    required
+                                ></textarea>
+                                <div class="form-text">
+                                    Maximum 50,000 characters. Will be encrypted before leaving your browser.
+                                </div>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label for="ttlSelect" class="form-label fw-bold">
+                                    <i class="bi bi-clock"></i>
+                                    Expiration Time
+                                </label>
+                                <select class="form-select" id="ttlSelect">
+                                    <option value="0.167">10 minutes</option>
+                                    <option value="1" selected>1 hour</option>
+                                    <option value="24">24 hours (1 day)</option>
+                                    <option value="168">7 days</option>
+                                </select>
+                                <div class="form-text">
+                                    The secret will be automatically deleted after this time, even if not accessed.
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary btn-lg" id="createBtn">
+                                    <i class="bi bi-shield-plus"></i>
+                                    Create one-view link
+                                </button>
+                            </div>
+                        </form>
+                        
+                        <!-- Loading State -->
+                        <div id="loadingState" class="text-center py-4" style="display: none;">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Encrypting...</span>
+                            </div>
+                            <p class="mt-2 text-muted">Encrypting your secret...</p>
+                        </div>
+                        
+                        <!-- Success Result -->
+                        <div id="successResult" style="display: none;">
+                            <div class="alert alert-success" role="alert">
+                                <i class="bi bi-check-circle"></i>
+                                <strong>Success!</strong> Your encrypted secret has been created.
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">
+                                    <i class="bi bi-link-45deg"></i>
+                                    Secure Link (share this)
+                                </label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="secretUrl" readonly>
+                                    <button class="btn btn-outline-secondary" type="button" id="copyBtn">
+                                        <i class="bi bi-clipboard"></i>
+                                        Copy
+                                    </button>
+                                </div>
+                                <div class="form-text">
+                                    <strong>Anyone with this link (including the part after #) can view the secret exactly once.</strong>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <button class="btn btn-secondary" id="showQrBtn">
+                                    <i class="bi bi-qr-code"></i>
+                                    Show QR Code
+                                </button>
+                            </div>
+                            
+                            <div id="qrCodeContainer" class="text-center mb-3" style="display: none;">
+                                <img id="qrCodeImg" class="img-fluid" alt="QR Code">
+                            </div>
+                            
+                            <div class="alert alert-warning" role="alert">
+                                <i class="bi bi-exclamation-triangle"></i>
+                                <strong>Keep the part after "#" secret.</strong> Save this link now - you cannot retrieve it later, 
+                                and it will be destroyed after one view or when it expires.
+                            </div>
+                            
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-primary" id="createAnotherBtn">
+                                    <i class="bi bi-plus-circle"></i>
+                                    Create Another Secret
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Error State -->
+                        <div id="errorState" class="alert alert-danger" style="display: none;" role="alert">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            <strong>Error:</strong> <span id="errorMessage"></span>
+                        </div>
+                    </div>
+                    
+                    <div class="card-footer text-center text-muted">
+                        <small>
+                            <i class="bi bi-shield-check"></i>
+                            End-to-end encrypted • One-time access • Self-destructing
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom Scripts -->
+    <script src="/static/crypto.js"></script>
+    <script src="/static/ai_security.js"></script>
+    <script src="/static/main.js"></script>
+</body>
+</html>
