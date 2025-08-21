@@ -44,21 +44,21 @@ Developers can download and try SendX directly from these links:
 
 ```bash
 # Run with in-memory storage (data will be lost on container restart)
-docker run -d -p 8000:8000 --name secretkeeper yourcompany/secretkeeper:latest
+docker run -d -p 8000:8000 --name sendx kakashi3lite/sendx:latest
 
 # Run with Redis storage
-docker run -d -p 8000:8000 --name secretkeeper \
+docker run -d -p 8000:8000 --name sendx \
   -e STORAGE_TYPE=redis \
   -e REDIS_URL=redis://redis-host:6379/0 \
-  yourcompany/secretkeeper:latest
+  kakashi3lite/sendx:latest
 ```
 
 ### Manual Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourcompany/secretkeeper.git
-cd secretkeeper
+git clone https://github.com/kakashi3lite/SendX.git
+cd SendX
 
 # Create a virtual environment
 python -m venv venv
