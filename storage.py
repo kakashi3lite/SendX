@@ -2,23 +2,20 @@
 storage.py
 ============
 
-Pluggable storage backends for the One‑View Secrets application.
+Pluggable storage backends for the SendX secure messaging application.
 
 This module defines a simple abstraction for storing and retrieving secrets,
-along with two concrete implementations:
+along with multiple concrete implementations:
 
 * ``MemoryStorage`` – an in‑memory dictionary suitable for development or testing.
-* ``KvStorage`` – a placeholder for a future Replit KV implementation.  In
-  production on Replit you should replace this class with one that wraps
-  ``replit.db`` or another persistent KV store.
+* ``RedisStorage`` – Redis-backed persistent storage suitable for production.
+* ``KvStorage`` – a placeholder for a future Replit KV implementation.
 
-Both backends implement an identical interface exposing three methods:
+All backends implement an identical interface exposing three methods:
 
 * ``put(id, record)`` – store a new secret record with a time‑to‑live (TTL).
 * ``get_once(id)`` – atomically retrieve and remove a secret record.  This
-  ensures one‑time access semantics.  ``MemoryStorage`` emulates atomicity
-  through a tombstone pattern; a future ``KvStorage`` should provide a
-  truly atomic ``GETDEL`` operation when supported by the underlying store.
+  ensures one‑time access semantics.
 * ``ttl(id)`` – return the remaining TTL in seconds or ``None`` if the key
   does not exist.  This is used to surface expiry information without
   exposing the ciphertext.
@@ -30,10 +27,12 @@ this project.
 
 from __future__ import annotations
 
+import os
 import time
 import json
+import logging
 from abc import ABC, abstractmethod
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, Dict, Any
 
 
 class SecretRecord(TypedDict, total=False):
@@ -189,3 +188,122 @@ class KvStorage(Storage):
         # Many KV stores provide TTL retrieval
         ttl = await self.kv.ttl(self._key(id))
         return ttl if ttl and ttl > 0 else None
+
+
+class RedisStorage(Storage):
+    """Redis-backed storage backend.
+
+    Suitable for production use with Redis.
+    """
+
+    def __init__(self, redis_url: str):
+        """Initialize a new Redis storage backend.
+        
+        :param redis_url: Redis connection URL
+        """
+        import redis.asyncio as redis
+        self.redis = redis.from_url(redis_url)
+        self.prefix = "sendx:secret:"
+        
+    def _key(self, id: str) -> str:
+        """Get the Redis key for a secret ID.
+        
+        :param id: Secret ID
+        :return: Redis key
+        """
+        return f"{self.prefix}{id}"
+
+    async def put(self, id: str, record: SecretRecord) -> None:
+        """Store a new secret record.
+
+        :param id: Unique identifier for the secret.
+        :param record: Secret data to store.
+        """
+        now = int(time.time())
+        ttl = record["exp"] - now
+        if ttl <= 0:
+            return
+        
+        await self.redis.set(
+            self._key(id), 
+            json.dumps(record),
+            ex=ttl
+        )
+
+    async def get_once(self, id: str) -> Optional[SecretRecord]:
+        """Get and remove a secret record.
+
+        :param id: Unique identifier for the secret.
+        :return: The secret record or ``None`` if not found.
+        """
+        # Use Redis GETDEL command for atomic get and delete (Redis 6.2+)
+        try:
+            data = await self.redis.execute_command("GETDEL", self._key(id))
+            if not data:
+                return None
+                
+            record = json.loads(data)
+            now = int(time.time())
+            if now > record["exp"]:
+                return None
+                
+            return record
+        except Exception as e:
+            # Fall back to non-atomic get + delete for older Redis versions
+            try:
+                data = await self.redis.get(self._key(id))
+                if not data:
+                    return None
+                    
+                record = json.loads(data)
+                now = int(time.time())
+                if now > record["exp"]:
+                    await self.redis.delete(self._key(id))
+                    return None
+                    
+                await self.redis.delete(self._key(id))
+                return record
+            except Exception as inner_e:
+                logging.error(f"Redis error in get_once: {inner_e}")
+                return None
+
+    async def ttl(self, id: str) -> Optional[int]:
+        """Get the remaining time‑to‑live for a secret.
+
+        :param id: Unique identifier for the secret.
+        :return: Seconds remaining until expiry or ``None`` if not found.
+        """
+        ttl = await self.redis.ttl(self._key(id))
+        if ttl < 0:  # Key doesn't exist or has no expiry
+            return None
+        return ttl
+
+
+def get_storage() -> Storage:
+    """Factory function to get the configured storage backend based on environment variables.
+    
+    Uses STORAGE_TYPE environment variable to determine which storage backend to use:
+    - "memory" (default): In-memory storage
+    - "redis": Redis storage (requires REDIS_URL)
+    - "kv": Replit KV storage (requires KV_CLIENT)
+    
+    :return: Storage backend instance
+    """
+    storage_type = os.environ.get("STORAGE_TYPE", "memory").lower()
+    
+    if storage_type == "redis":
+        redis_url = os.environ.get("REDIS_URL")
+        if not redis_url:
+            logging.warning("REDIS_URL not set, falling back to in-memory storage")
+            return MemoryStorage()
+        return RedisStorage(redis_url)
+    elif storage_type == "kv":
+        # This would be implemented for Replit KV store
+        try:
+            import replit.db as kv
+            return KvStorage(kv, "sec:")
+        except ImportError:
+            logging.warning("Replit DB not available, falling back to in-memory storage")
+            return MemoryStorage()
+    else:
+        return MemoryStorage()

@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Docker
+.docker
+docker-compose*.yml
+Dockerfile*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build and release directories
+build/
+release_assets/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Temporary files
+*.log
+.DS_Store
+__pycache__

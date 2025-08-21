@@ -239,15 +239,13 @@ app.add_middleware(
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "memory").lower()
 _storage: Storage
 
-if STORAGE_BACKEND == "memory":
-    _storage = MemoryStorage()
-elif STORAGE_BACKEND == "kv":
-    # Placeholder for future KV backend.  Falling back to memory for now.
-    _storage = MemoryStorage()
-else:
-    # Unknown backend; default to memory with a warning.
-    print(f"[WARN] Unknown STORAGE_BACKEND '{STORAGE_BACKEND}', using in‑memory storage.")
-    _storage = MemoryStorage()
+# Use the storage factory function to get the configured storage backend
+from storage import get_storage
+_storage = get_storage()
+
+# Log which storage backend is being used
+storage_type = os.environ.get("STORAGE_TYPE", "memory").lower()
+print(f"[INFO] Using {storage_type} storage backend.")
 
 # HMAC key used solely for generating obfuscated secret IDs.  This key has no
 # relationship to the client‑side encryption key.  It should be random and
